@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Myanmar Movie Recap AI — Full Pipeline</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { display: flex; height: 100vh; background-color: #0b0f19; color: #f3f4f6; overflow: hidden; }
+        .sidebar { width: 320px; background-color: #111827; border-right: 1px solid #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .sidebar h2 { color: #38bdf8; font-size: 18px; border-bottom: 1px solid #1f2937; padding-bottom: 8px; }
+        .nav-section { display: flex; flex-direction: column; gap: 6px; }
+        .nav-section label { font-size: 12px; color: #9ca3af; font-weight: bold; text-transform: uppercase; }
+        .sidebar input, .sidebar select { padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #1f2937; color: #fff; font-size: 13px; }
+        .btn-primary { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; text-align: center; }
+        .btn-primary:hover { opacity: 0.9; }
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: #1f2937; padding: 20px; border-radius: 10px; border: 1px solid #374151; }
+        .results-box { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .result-row { background: #111827; padding: 10px 15px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #374151; }
+        a.dl-link { color: #38bdf8; text-decoration: none; font-weight: bold; background: #0284c722; padding: 5px 10px; border-radius: 4px; border: 1px solid #0284c7; }
+        .progress-bar-container { width: 100%; background: #374151; border-radius: 4px; height: 8px; margin-top: 5px; overflow: hidden; }
+        .progress-bar { width: 0%; height: 100%; background: #38bdf8; transition: width 0.3s; }
+        @media(max-width: 768px) { body { flex-direction: column; overflow: auto; } .sidebar { width: 100%; height: auto; } .main-content { height: auto; } }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>🎬 Movie Recap AI</h2>
+        <div class="nav-section">
+            <label>1. New Project</label>
+            <input type="text" id="projectName" value="Epic Movie Recap 2026">
+        </div>
+        <div class="nav-section">
+            <label>2. Video Upload (Up to 90 min)</label>
+            <input type="file" id="videoFile" accept="video/*">
+            <div class="progress-bar-container"><div class="progress-bar" id="uploadProgress"></div></div>
+        </div>
+        <div class="nav-section">
+            <label>3. Video Splitting Duration (Seconds)</label>
+            <input type="number" id="segmentDuration" value="180">
+        </div>
+        <div class="nav-section">
+            <label>4. Language Selection</label>
+            <select id="languageSelect">
+                <option value="Burmese (မြန်မာ)">Burmese (မြန်မာ)</option>
+                <option value="English">English</option>
+                <option value="Thai (ไทย)">Thai (ไทย)</option>
+                <option value="Chinese (中文)">Chinese (中文)</option>
+            </select>
+        </div>
+        <div class="nav-section">
+            <label>5. Voiceover Settings (TTS)</label>
+            <select id="ttsProvider">
+                <option value="ElevenLabs">ElevenLabs (API Key Required)</option>
+                <option value="OpenAI">OpenAI TTS (API Key Required)</option>
+            </select>
+        </div>
+        <div class="nav-section">
+            <label>6. Subtitle Settings</label>
+            <select id="subtitleMode">
+                <option value="true">Enabled (Embedded & SRT)</option>
+                <option value="false">Disabled</option>
+            </select>
+        </div>
+        <div class="nav-section">
+            <label>7. Processing & QC Pipeline</label>
+            <span id="pipelineStatus" style="font-size: 12px; color: #9ca3af;">Status: Ready</span>
+        </div>
+        <button class="btn-primary" onclick="startFullPipeline()">🚀 Start Full Pipeline</button>
+    </div>
+    <div class="main-content">
+        <h1>Dashboard & Download Center</h1>
+        <div class="card">
+            <h3>Generated Video Parts (QC Verified & Yellow Overlay)</h3>
+            <div class="results-box" id="resultsBox">
+                <span style="color: #9ca3af; font-size: 13px;">ဗီဒီယိုဖိုင် တင်ပြီးပါက ဤနေရာတွင် အပိုင်းလိုက် ထွက်လာပါမည်။</span>
+            </div>
+        </div>
+    </div>
+    <script>
+        let uploadedServerFilename = "";
+        async function startFullPipeline() {
+            const fileInput = document.getElementById('videoFile');
+            const duration = document.getElementById('segmentDuration').value;
+            const language = document.getElementById('languageSelect').value;
+            const ttsProvider = document.getElementById('ttsProvider').value;
+            const subEnabled = document.getElementById('subtitleMode').value;
+            const statusLabel = document.getElementById('pipelineStatus');
+            const resultsBox = document.getElementById('resultsBox');
+            const progressBar = document.getElementById('uploadProgress');
+
+            if (fileInput.files.length === 0) {
+                alert('ကျေးဇူးပြု၍ ဗီဒီယိုဖိုင် အရင်တင်ပေးပါ။');
+                return;
+            }
+            const file = fileInput.files[0];
+            const fileId = "movie_" + Date.now();
+            const chunkSize = 2 * 1024 * 1024;
+            const totalChunks = Math.ceil(file.size / chunkSize);
+
+            statusLabel.innerText = "Status: Uploading chunks...";
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = file.slice(i * chunkSize, (i + 1) * chunkSize);
+                const formData = new FormData();
+                formData.append('file', chunk);
+                formData.append('chunk_index', i);
+                formData.append('total_chunks', totalChunks);
+                formData.append('file_identifier', fileId);
+
+                let res = await fetch('/api/upload-chunk', { method: 'POST', body: formData });
+                let data = await res.json();
+                progressBar.style.width = Math.round(((i + 1) / totalChunks) * 100) + "%";
+                if (data.status === 'completed') {
+                    uploadedServerFilename = data.filename;
+                }
+            }
+            statusLabel.innerText = "Status: Splitting & QC running...";
+            resultsBox.innerHTML = "";
+
+            const processData = new FormData();
+            processData.append('filename', uploadedServerFilename);
+            processData.append('segment_duration', duration);
+            processData.append('language', language);
+            processData.append('tts_provider', ttsProvider);
+            processData.append('subtitle_enabled', subEnabled);
+
+            let procRes = await fetch('/api/process-pipeline', { method: 'POST', body: processData });
+            let procResult = await procRes.json();
+
+            if (procResult.status === 'success') {
+                statusLabel.innerText = "Status: Completed Successfully!";
+                procResult.parts.forEach(part => {
+                    let row = document.createElement('div');
+                    row.className = 'result-row';
+                    row.innerHTML = `
+                        <span><strong>${part.title}</strong> (${part.duration}s) - <span style="color: #4ade80;">${part.status}</span></span>
+                        <a class="dl-link" href="${part.url}" download>📥 Download Part</a>
+                    `;
+                    resultsBox.appendChild(row);
+                });
+            } else {
+                statusLabel.innerText = "Status: Processing Failed.";
+            }
+        }
+    </script>
+</body>
+</html>
