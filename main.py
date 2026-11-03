@@ -28,8 +28,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 def read_index(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html", context={"request": request})
-
+    return templates.TemplateResponse(request=request, name="index.html")
 @app.post("/api/upload-chunk")
 async def upload_chunk(
     file: UploadFile = File(...),
