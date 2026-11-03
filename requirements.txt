@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+Pillow
+numpy
+moviepy<2.0
+imageio-ffmpeg
+Jinja2
+openai
+elevenlabs
